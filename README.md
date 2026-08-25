@@ -77,7 +77,25 @@ Works with any OpenAI-compatible API: OpenAI, Groq, OpenRouter, DeepSeek, Togeth
 ## Requirements
 
 - Python 3.7+ (stdlib only — no pip packages needed)
-- Linux, Android (Termux), macOS, Windows (limited)
+- **Linux** ✅ Full support
+- **macOS** ✅ Full support
+- **Windows** ✅ Full support (optional: `pip install pyreadline3` for tab-completion)
+- **Android (Termux)** ✅ Full support (extra features: GPS, camera, contacts import)
+
+## Cross-Platform Notes
+
+All core features work identically on every OS:
+- Profile CRUD, records, links, graph, encryption, backup/export/import
+- **OSINT auto-enrichment** (Wikipedia, Google News, social platforms, DNS/RDAP, email/phone validation)
+- **Entity expansion** (`profiler expand "Company"`)
+- **Custom AI provider** (any OpenAI-compatible API)
+- **Reports, case view, dedup/merge, reverse image search, recurring OSINT**
+
+Platform-specific features gracefully degrade:
+- **GPS**: falls back to IP geolocation (works everywhere) → manual input
+- **Camera**: not available on PC/macOS (file upload works)
+- **Phone contacts import**: Android-only via Termux API
+- **Tab-completion**: native on Linux/macOS, `pip install pyreadline3` on Windows
 
 ## Data Location
 

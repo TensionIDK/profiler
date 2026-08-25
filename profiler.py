@@ -3837,16 +3837,36 @@ def manage_words():
 
 def set_completions(words):
     try:
-        import readline
+        try:
+            import readline
+        except ImportError:
+            if os.name == "nt":
+                try:
+                    import pyreadline3 as readline
+                except ImportError:
+                    try:
+                        import pyreadline as readline
+                    except ImportError:
+                        readline = None
+            else:
+                readline = None
+        if readline is None:
+            return
         def completer(text, state):
             opts = [w for w in words if w.lower().startswith(text.lower())]
             return opts[state] if state < len(opts) else None
         readline.set_completer(completer)
         readline.set_completer_delims(" \t\n;")
-        if "libedit" in readline.__doc__ or "editline" in readline.__doc__:
-            readline.parse_and_bind("bind ^I rl_complete")
-        else:
-            readline.parse_and_bind("tab: complete")
+        try:
+            if "libedit" in readline.__doc__ or "editline" in readline.__doc__:
+                readline.parse_and_bind("bind ^I rl_complete")
+            else:
+                readline.parse_and_bind("tab: complete")
+        except Exception:
+            try:
+                readline.parse_and_bind("tab: complete")
+            except Exception:
+                pass
     except Exception:
         pass
 
