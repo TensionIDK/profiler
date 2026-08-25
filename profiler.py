@@ -345,6 +345,16 @@ def new_profile(name, **fields):
     return pid
 
 
+def new_profile_dedup(name, **fields):
+    """Create a profile only if one with the same name doesn't already exist.
+    Returns (pid, created_bool)."""
+    for pid in list_pids():
+        p = load(pid)
+        if (p.get("name") or "").strip().lower() == (name or "").strip().lower():
+            return pid, False
+    return new_profile(name, **fields), True
+
+
 def set_field(p, field, value, silent=False):
     if value is None or value is True or value is False:
         return
@@ -2401,6 +2411,7 @@ def ai_agent(user_text, interactive=True):
         system_prompt += "\n\n" + plugin_desc
     messages = [{"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_text}]
+    cmd_executed = False
     for _ in range(10):
         reply = ai_call(messages, cfg)
         if not reply:
@@ -2414,14 +2425,22 @@ def ai_agent(user_text, interactive=True):
             return "menu"
         m_cmd = re.search(r"^\s*CMD:\s*(.+)$", reply, re.M | re.I)
         if m_cmd:
+            if cmd_executed:
+                print("AI> %s" % reply)
+                return "menu"
             cmdline = m_cmd.group(1).strip()
             print("PROFILER> %s" % cmdline)
             run_command(cmdline, interactive=interactive)
+            cmd_executed = True
             messages.append({"role": "user",
-                             "content": "I executed that command. Now give your final summary or answer."})
+                             "content": "I executed that command. Now give your final summary "
+                                        "or answer. Do NOT run any more commands."})
             continue
         m_plugin = re.search(r"^\s*PLUGIN:\s*(.+)$", reply, re.M | re.I)
         if m_plugin:
+            if cmd_executed:
+                print("AI> %s" % reply)
+                return "menu"
             pcmd = m_plugin.group(1).strip()
             parts = shlex.split(pcmd)
             if parts:
@@ -2436,6 +2455,9 @@ def ai_agent(user_text, interactive=True):
                 continue
         m_tool = re.search(r"^\s*TOOL:\s*(.+)$", reply, re.M | re.I)
         if m_tool:
+            if cmd_executed:
+                print("AI> %s" % reply)
+                return "menu"
             tool_cmd = m_tool.group(1).strip()
             print("TOOL> %s" % tool_cmd)
             results = ai_run_tool(tool_cmd, interactive)
@@ -4313,8 +4335,22 @@ def cmd_add_smart(toks, ctx, interactive):
             return "menu"
         print("Usage: new <name> phone: X email: Y tags: a,b")
         return "menu"
-    pid = new_profile(name, **fields)
-    print("Profile '%s' created.  ID: %s" % (name, pid))
+    pid, created = new_profile_dedup(name, **fields)
+    if created:
+        print("Profile '%s' created.  ID: %s" % (name, pid))
+    else:
+        p = load(pid)
+        updated = False
+        for k, v in fields.items():
+            if v in (None, True, False, ""):
+                continue
+            if not p.get(k) or (isinstance(p.get(k), list) and not p[k]):
+                set_field(p, k, v)
+                updated = True
+        if updated:
+            p["updated_at"] = now_iso()
+            save(pid, p)
+        print("Profile '%s' already exists (ID: %s). Updated missing fields." % (name, pid))
     return "menu"
 
 
