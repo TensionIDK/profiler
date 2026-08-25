@@ -126,17 +126,24 @@ Plugin types:
 
 ## Cross-Platform Notes
 
+> **Design rule:** Every feature must work on ALL operating systems —
+> Linux, macOS, Windows, and Android (Termux). OS-specific capabilities
+> always have a graceful fallback so nothing breaks on any platform.
+
 All core features work identically on every OS:
 - Profile CRUD, records, links, graph, encryption, backup/export/import
 - **OSINT auto-enrichment** (Wikipedia, Google News, social platforms, DNS/RDAP, email/phone validation)
 - **Entity expansion** (`profiler expand "Company"`)
 - **Custom AI provider** (any OpenAI-compatible API)
+- **Network scanning** (websites, WiFi, Bluetooth — via nmcli/iw/netsh/bluetoothctl on PC, Termux API on Android)
 - **Reports, case view, dedup/merge, reverse image search, recurring OSINT**
+- **Custom plugins** and **AI shell access** (user-confirmed)
 
 Platform-specific features gracefully degrade:
 - **GPS**: falls back to IP geolocation (works everywhere) → manual input
+- **WiFi scan**: Termux API → netsh (Windows) → nmcli/iw/iwlist (Linux) → bluetoothctl
 - **Camera**: not available on PC/macOS (file upload works)
-- **Phone contacts import**: Android-only via Termux API
+- **Phone contacts import**: Android-only via Termux API (skipped elsewhere)
 - **Tab-completion**: native on Linux/macOS, `pip install pyreadline3` on Windows
 
 ## Data Location
