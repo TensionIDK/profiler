@@ -1504,7 +1504,7 @@ def osint_domain(domain):
 
 def osint_subdomains(domain):
     url = "https://crt.sh/?q=%%25.%s&output=json" % domain
-    data = http_get_json(url, timeout=30)
+    data = http_get_json(url, timeout=10)
     if not data or not isinstance(data, list):
         return [("Subdomains (crt.sh)", ["lookup failed"])]
     subs = set()
@@ -2211,8 +2211,11 @@ explain yourself, do not output any reasoning. Output ONLY the single command li
    - websearch <query>    (web search)
    - fetch <url>          (fetch a web page)
    - network <target>     (scan a website: DNS, TLS, ports, subdomains, IP)
-   - scan wifi            (scan wifi networks)
-   - scan bluetooth       (scan bluetooth devices)
+   - scan wifi            (scan wifi networks - all OS)
+   - scan bluetooth       (scan bluetooth devices - all OS)
+   - shell <command>      (run ANY terminal command; the user must approve it.
+                           Use this when you need a tool installed in the terminal
+                           but not built into profiler, e.g. nmap, curl, dig, whois.)
 
 3) PLUGIN: <name> <arg>
    When the user has configured a custom plugin and it matches the task, call it.
@@ -2307,7 +2310,7 @@ def ai_call(messages, cfg=None):
         return None
 
 
-def ai_run_tool(tool_cmd):
+def ai_run_tool(tool_cmd, interactive=True):
     low = tool_cmd.strip().lower()
     m = re.match(r"^(websearch|searchweb|web|ddg)\s+(.+)$", low)
     if m:
@@ -2315,6 +2318,10 @@ def ai_run_tool(tool_cmd):
     m = re.match(r"^(fetch|geturl|open)\s+(\S.+)$", low)
     if m:
         return fetch_url(m.group(2).strip())
+    m = re.match(r"^network\s+deep\s+(.+)$", low)
+    if m:
+        lines = scan_website_deep(m.group(1).strip())
+        return [("Deep network scan: %s" % m.group(1).strip(), lines)]
     m = re.match(r"^network\s+(.+)$", low)
     if m:
         lines = scan_website(m.group(1).strip())
@@ -2325,6 +2332,10 @@ def ai_run_tool(tool_cmd):
     m = re.match(r"^scan\s+(bluetooth|bt|ble)$", low)
     if m:
         return [("Bluetooth scan", scan_bluetooth())]
+    m = re.match(r"^shell\s+(.+)$", low)
+    if m:
+        out = ai_run_shell(m.group(1).strip(), interactive)
+        return [("Shell command result", out.splitlines())]
     return None
 
 
@@ -2376,7 +2387,7 @@ def ai_agent(user_text, interactive=True):
         if m_tool:
             tool_cmd = m_tool.group(1).strip()
             print("TOOL> %s" % tool_cmd)
-            results = ai_run_tool(tool_cmd)
+            results = ai_run_tool(tool_cmd, interactive)
             if not results:
                 messages.append({"role": "user",
                                  "content": "Tool result: tool failed or no results"})
@@ -2633,15 +2644,245 @@ def tls_certificate(domain, port=443):
         return {"error": str(e)}
 
 
-def port_scan(domain, ports=(21, 22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 3389, 5432, 6379, 8080, 8443, 8888)):
-    open_ports = []
-    for p in ports:
+# --------------------------------------------------------------------------
+# Tech fingerprinting (technique adapted from nuclei / Wappalyzer:
+# match HTTP response headers, body, cookies, and meta tags against
+# known signatures to detect the CMS/server/framework.)
+# --------------------------------------------------------------------------
+TECH_FINGERPRINTS = [
+    # (name, header, header_value_regex, body_regex, meta_regex)
+    ("WordPress", "x-powered-by", None, r"wp-content|wp-includes|wp-admin", r"generator[^>]*WordPress"),
+    ("Drupal", None, None, r"/sites/default/files|drupal-settings|drupal.js", r"generator[^>]*Drupal"),
+    ("Joomla", None, None, r"/media/jui/|com_content|joomla", r"generator[^>]*Joomla"),
+    ("Shopify", "x-shopid", None, None, None),
+    ("WooCommerce", None, None, r"/wp-content/plugins/woocommerce|woocommerce", None),
+    ("Magento", "x-magento-cache", None, None, None),
+    ("PrestaShop", "x-prestashop", None, None, None),
+    ("Laravel", None, None, r"laravel_session|cookie\(['\"]laravel", None),
+    ("Symfony", None, None, r"_sf2_attributes|symfony", None),
+    ("Django", "x-frame-options", "SAMEORIGIN", r"csrfmiddlewaretoken|django", None),
+    ("Rails", "x-powered-by", r"Phusion|Passenger|Rails", r"csrf-param.*authenticity_token", None),
+    ("ASP.NET", "x-aspnet-version", None, None, None),
+    ("ASP.NET MVC", "x-aspnetmvc-version", None, None, None),
+    ("Node.js", "x-powered-by", "Express", r"express", None),
+    ("Express", "x-powered-by", "Express", None, None),
+    ("Next.js", "x-powered-by", "Next.js", r"__NEXT_DATA__|_next/", None),
+    ("Nuxt", None, None, r"__NUXT__|_nuxt/", None),
+    ("Vue.js", None, None, r"vue\.js|Vue\.[a-z]|__VUE__", None),
+    ("React", None, None, r"react(\.min)?\.js|__react|data-reactroot", None),
+    ("Angular", None, None, r"ng-app|angular(\.min)?\.js|ng-version", None),
+    ("Gatsby", None, None, r"___gatsby|gatsby-", None),
+    ("nginx", "server", r"^nginx", None, None),
+    ("Apache", "server", r"^Apache", None, None),
+    ("LiteSpeed", "server", r"^LiteSpeed", None, None),
+    ("IIS", "server", r"^Microsoft-IIS", None, None),
+    ("Cloudflare", "server", r"cloudflare", r"cloudflare", None),
+    ("Cloudflare", "cf-ray", None, None, None),
+    ("Google", "server", r"^gws|^GFE", None, None),
+    ("OpenResty", "server", r"openresty", None, None),
+    ("Caddy", "server", r"^Caddy", None, None),
+    ("PHP", "x-powered-by", r"^PHP", r"\.php\b", None),
+    ("Java", "x-powered-by", r"Java", None, None),
+    ("Java", "server", r"^Apache-Coyote", None, None),
+    ("Tomcat", "server", r"^Apache-Coyote", None, None),
+    ("JBoss", "x-powered-by", r"JBoss", None, None),
+    ("WebLogic", "server", r"WebLogic", None, None),
+    ("GitHub Pages", "server", r"GitHub.com", None, None),
+    ("Heroku", "via", r"heroku", None, None),
+    ("Varnish", "via", r"^varnish", None, None),
+    ("Squid", "server", r"^squid", None, None),
+    ("CouchDB", "server", r"CouchDB", None, None),
+    ("Perl", "server", r"^Apache.*Perl", None, None),
+    ("Ruby", "x-powered-by", r"^Ruby", None, None),
+    ("Python", "server", r"^Python|^Werkzeug|^gunicorn|^CherryPy", None, None),
+    ("gunicorn", "server", r"^gunicorn", None, None),
+    ("Flask", "server", r"^Werkzeug", None, None),
+]
+
+
+def fingerprint_tech(headers, body):
+    """Detect technologies from HTTP headers + body (nuclei/wappalyzer style)."""
+    found = []
+    if not headers:
+        headers = {}
+    headers = {k.lower(): v for k, v in headers.items()}
+    body_lower = (body or "").lower()
+    for name, hdr, hdr_re, body_re, meta_re in TECH_FINGERPRINTS:
+        hit = False
+        if hdr and hdr in headers:
+            val = headers[hdr]
+            if hdr_re:
+                if re.search(hdr_re, val, re.I):
+                    hit = True
+            else:
+                hit = True
+        if not hit and body_re and re.search(body_re, body_lower):
+            hit = True
+        if not hit and meta_re and re.search(meta_re, body_lower):
+            hit = True
+        if hit and name not in found:
+            found.append(name)
+    return found
+
+
+def http_get_with_tech(domain):
+    """Fetch page + headers, return (status, headers, body) for fingerprinting."""
+    for scheme in ("https", "http"):
         try:
-            with socket.create_connection((domain, p), timeout=3):
-                open_ports.append(p)
+            req = urllib.request.Request("%s://%s/" % (scheme, domain),
+                                         headers={"User-Agent": OSINT_UA})
+            with urllib.request.urlopen(req, timeout=12) as r:
+                body = r.read().decode("utf-8", "replace")[:20000]
+                return r.getcode(), dict(r.getheaders()), body
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read().decode("utf-8", "replace")[:20000]
+            except Exception:
+                body = ""
+            return e.code, dict(e.headers), body
+        except Exception:
+            continue
+    return None, {}, ""
+
+
+def port_scan(domain, ports=(21, 22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 3389, 5432, 6379, 8080, 8443, 8888)):
+    """Concurrent port scan (threaded, like naabu's approach)."""
+    import threading
+    open_ports = []
+    lock = threading.Lock()
+
+    def _scan(p):
+        try:
+            with socket.create_connection((domain, p), timeout=1.5):
+                with lock:
+                    open_ports.append(p)
         except Exception:
             pass
-    return open_ports
+
+    threads = [threading.Thread(target=_scan, args=(p,)) for p in ports]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return sorted(open_ports)
+
+
+# --------------------------------------------------------------------------
+# Borrowed open-source security tools (detected if installed):
+#   naabu (projectdiscovery)  - fast port scanner
+#   nmap                     - network mapper / service detection
+#   httpx (projectdiscovery) - HTTP probing / tech detection
+#   subfinder                - passive subdomain enumeration
+#   theHarvester             - emails, subdomains, names OSINT
+#   maigret                  - username dossier from 3000+ sites
+# Each falls back gracefully when not installed. Install via:
+#   pip3 install theHarvester  (or)  go install .../naabu@latest  etc.
+# --------------------------------------------------------------------------
+SECURITY_TOOLS = {
+    "naabu": {
+        "desc": "Fast port scanner (projectdiscovery)",
+        "scan": lambda d, out: out.append(
+            run_tool_capture(["naabu", "-host", d, "-silent", "-top-ports", "100"], timeout=120)
+            .strip() or "naabu: no open ports found"),
+    },
+    "nmap": {
+        "desc": "Network mapper / service detection",
+        "scan": lambda d, out: out.append(
+            run_tool_capture(["nmap", "-sV", "--top-ports", "50", "-T4", d], timeout=300)
+            .strip() or "nmap: no results"),
+    },
+    "httpx": {
+        "desc": "HTTP toolkit / tech & header probing (projectdiscovery)",
+        "scan": lambda d, out: out.append(
+            run_tool_capture(["httpx", "-u", "https://" + d, "-sc", "-title", "-tech-detect",
+                              "-web-server", "-silent"], timeout=120)
+            .strip() or "httpx: no results"),
+    },
+    "subfinder": {
+        "desc": "Passive subdomain enumeration (projectdiscovery)",
+        "scan": lambda d, out: out.append(
+            run_tool_capture(["subfinder", "-silent", "-d", d], timeout=180)
+            .strip() or "subfinder: no subdomains found"),
+    },
+    "theHarvester": {
+        "desc": "Emails, subdomains, names OSINT",
+        "scan": lambda d, out: out.append(
+            run_tool_capture(["theHarvester", "-d", d, "-b", "all", "-l", "200"], timeout=300)
+            .strip() or "theHarvester: no results"),
+    },
+    "maigret": {
+        "desc": "Username dossier from 3000+ sites",
+        "scan": lambda d, out: out.append(
+            run_tool_capture(["maigret", d, "-a"], timeout=300)
+            .strip() or "maigret: no results"),
+    },
+}
+
+
+def security_tools_scan(target):
+    """Run all installed open-source security tools against a target."""
+    domain = clean_domain(target)
+    lines = []
+    for name, info in SECURITY_TOOLS.items():
+        if tool_available(name):
+            print("  [%s] running %s..." % (name, info["desc"]))
+            out_lines = []
+            try:
+                info["scan"](domain, out_lines)
+            except Exception as e:
+                out_lines.append("%s error: %s" % (name, e))
+            for ln in (out_lines[0] or "").splitlines()[:30]:
+                lines.append("[%s] %s" % (name, ln))
+        else:
+            lines.append("[%s] not installed (%s). Install it to enable." % (name, info["desc"]))
+    return lines
+
+
+def security_tools_status():
+    print("Borrowed open-source security tools:")
+    for name, info in SECURITY_TOOLS.items():
+        status = "INSTALLED" if tool_available(name) else "not installed"
+        print("  %-14s %-10s %s" % (name, status, info["desc"]))
+
+
+def security_tools_install(name=None):
+    """Install a borrowed security tool (best-effort, cross-platform)."""
+    import shlex
+    pip_map = {
+        "theHarvester": ["pip3", "install", "theHarvester"],
+        "maigret": ["pip3", "install", "maigret"],
+    }
+    go_map = {
+        "naabu": "go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest",
+        "httpx": "go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest",
+        "subfinder": "go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest",
+    }
+    apt_map = {
+        "nmap": ["apt", "install", "-y", "nmap"],
+        "subfinder": ["apt", "install", "-y", "subfinder"],
+        "maigret": ["pip3", "install", "maigret"],
+    }
+    if name:
+        if name in pip_map:
+            print("Installing %s via pip3..." % name)
+            print(run_tool_capture(pip_map[name], timeout=300))
+        elif name in go_map:
+            print("Installing %s via go (needs Go installed)..." % name)
+            print(run_tool_capture(shlex.split(go_map[name]), timeout=600))
+        elif name in apt_map:
+            print("Installing %s via apt (needs root/sudo)..." % name)
+            cmd = apt_map[name]
+            if tool_available("sudo"):
+                cmd = ["sudo"] + cmd
+            print(run_tool_capture(cmd, timeout=300))
+        else:
+            print("No known install method for %s. See the tool's GitHub repo." % name)
+        return
+    # Install all
+    for n in list(pip_map) + list(go_map) + list(apt_map):
+        if not tool_available(n):
+            print("\n--- Installing %s ---" % n)
+            security_tools_install(n)
 
 
 def scan_website(target):
@@ -2659,16 +2900,18 @@ def scan_website(target):
     except Exception as e:
         lines.append("DNS: failed (%s)" % e)
 
-    # HTTP headers
-    for scheme in ("https", "http"):
-        code, hdrs = http_headers("%s://%s/" % (scheme, domain))
-        if hdrs and not hdrs.get("error"):
-            lines.append("HTTP (%s): status %s" % (scheme, code))
-            for k in ("server", "x-powered-by", "content-type", "strict-transport-security",
-                      "set-cookie", "via", "x-aspnet-version", "x-generator"):
-                if hdrs.get(k):
-                    lines.append("  %s: %s" % (k, hdrs[k][:120]))
-            break
+    # HTTP headers + tech fingerprinting
+    code, hdrs, body = http_get_with_tech(domain)
+    if hdrs:
+        scheme = "https" if code else "http"
+        lines.append("HTTP (%s): status %s" % (scheme, code))
+        for k in ("server", "x-powered-by", "content-type", "strict-transport-security",
+                  "set-cookie", "via", "x-aspnet-version", "x-generator"):
+            if hdrs.get(k):
+                lines.append("  %s: %s" % (k, hdrs[k][:120]))
+        tech = fingerprint_tech(hdrs, body)
+        if tech:
+            lines.append("  Technologies detected: %s" % ", ".join(tech))
 
     # TLS certificate
     cert = tls_certificate(domain)
@@ -2724,8 +2967,19 @@ def scan_website(target):
     return lines
 
 
+def scan_website_deep(target):
+    """Full scan: base website scan + borrowed open-source security tools."""
+    domain = clean_domain(target)
+    lines = scan_website(domain)
+    lines.append("")
+    lines.append("-- Borrowed open-source security tools --")
+    lines.extend(security_tools_scan(domain))
+    return lines
+
+
 def scan_wifi():
     lines = []
+    # Android / Termux
     if tool_available("termux-wifi-scaninfo"):
         print("  [wifi] scanning networks (termux-wifi-scaninfo)...")
         out = run_tool_capture(["termux-wifi-scaninfo"], timeout=20)
@@ -2739,24 +2993,51 @@ def scan_wifi():
                 rssi = n.get("rssi", "")
                 freq = n.get("frequency", "")
                 lines.append("WiFi: %s | BSSID %s | RSSI %s dBm | %s MHz" % (ssid, bssid, rssi, freq))
+            return lines
         except Exception:
             lines.append("Wifi scan: could not parse output.")
-    elif tool_available("termux-wifi-connectioninfo"):
-        out = run_tool_capture(["termux-wifi-connectioninfo"], timeout=10)
-        try:
-            c = json.loads(out)
-            lines.append("Connected to WiFi: %s (IP %s)" % (
-                c.get("ssid", "?"), c.get("ip", "?")))
-        except Exception:
-            lines.append("Wifi connection info unavailable.")
-    else:
-        lines.append("WiFi scanning requires Termux API (termux-api).")
-        lines.append("On PC/Linux, use external tools like nmcli/iwlist instead.")
+            return lines
+    # Windows
+    if os.name == "nt" and tool_available("netsh"):
+        print("  [wifi] scanning via netsh (Windows)...")
+        out = run_tool_capture(["netsh", "wlan", "show", "networks", "mode=bssid"], timeout=30)
+        lines.append(out.strip() or "netsh: no wifi networks found")
+        return lines
+    # Linux / others: try nmcli, then iw, then iwlist
+    if tool_available("nmcli"):
+        print("  [wifi] scanning via nmcli (NetworkManager)...")
+        out = run_tool_capture(["nmcli", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list"], timeout=30)
+        lines.append(out.strip() or "nmcli: no wifi networks found")
+        return lines
+    if tool_available("iw"):
+        print("  [wifi] scanning via iw (needs root)...")
+        out = run_tool_capture(["iw", "dev"], timeout=10)
+        dev = ""
+        for ln in out.splitlines():
+            if "Interface" in ln:
+                dev = ln.split()[-1]
+                break
+        if dev:
+            out2 = run_tool_capture(["iw", "dev", dev, "scan"], timeout=30)
+            found = [ln.strip() for ln in out2.splitlines() if "SSID:" in ln]
+            lines.append("\n".join("WiFi: %s" % s.split("SSID:")[-1].strip() for s in found[:20]) or "no SSIDs found")
+        else:
+            lines.append("iw: no wireless interface found")
+        return lines
+    if tool_available("iwlist"):
+        print("  [wifi] scanning via iwlist (legacy)...")
+        out = run_tool_capture(["iwlist", "scan"], timeout=40)
+        ssids = re.findall(r'ESSID:"([^"]*)"', out)
+        lines.append("\n".join("WiFi: %s" % s for s in ssids[:20]) or "iwlist: no networks found")
+        return lines
+    lines.append("WiFi scanning: no compatible tool found.")
+    lines.append("Install nmcli (NetworkManager), iw, or iwlist on Linux; use netsh on Windows; termux-api on Android.")
     return lines
 
 
 def scan_bluetooth():
     lines = []
+    # Android / Termux
     if tool_available("termux-bluetooth-scaninfo"):
         print("  [bluetooth] scanning devices (termux-bluetooth-scaninfo)...")
         out = run_tool_capture(["termux-bluetooth-scaninfo"], timeout=30)
@@ -2768,16 +3049,56 @@ def scan_bluetooth():
                 name = d.get("name") or "(unknown)"
                 mac = d.get("address", "")
                 lines.append("BT: %s | %s" % (name, mac))
+            return lines
         except Exception:
             lines.append("Bluetooth scan: could not parse output.")
-    else:
-        lines.append("Bluetooth scanning requires Termux API (termux-api).")
+            return lines
+    # Windows
+    if os.name == "nt" and tool_available("powershell"):
+        print("  [bluetooth] scanning via PowerShell (Windows)...")
+        ps = ("Get-PnpDevice -Class Bluetooth | Where-Object {$_.Status -eq 'OK'} | "
+              "Select-Object FriendlyName | Format-Table -HideTableHeaders")
+        out = run_tool_capture(["powershell", "-NoProfile", "-Command", ps], timeout=30)
+        lines.append(out.strip() or "powershell: no bluetooth devices found")
+        return lines
+    # Linux / macOS: bluetoothctl
+    if tool_available("bluetoothctl"):
+        print("  [bluetooth] scanning via bluetoothctl...")
+        run_tool_capture(["bluetoothctl", "--timeout", "8", "scan", "on"], timeout=15)
+        out = run_tool_capture(["bluetoothctl", "devices"], timeout=15)
+        found = [ln.strip() for ln in out.splitlines() if "Device" in ln]
+        lines.append("\n".join(found[:20]) or "bluetoothctl: no devices found")
+        return lines
+    lines.append("Bluetooth scanning: no compatible tool found.")
+    lines.append("Install bluetoothctl (bluez) on Linux, use PowerShell on Windows, termux-api on Android.")
     return lines
 
 
 def cmd_network(args, interactive=True):
     if not args:
-        print("Usage: profiler network <domain/url> | network --wifi | network --bluetooth")
+        print("Usage: profiler network <domain/url> | network --wifi | network --bluetooth | "
+              "network --deep <domain> | network --tools")
+        return
+    if args[0].lower() in ("--tools", "tools", "status"):
+        security_tools_status()
+        return
+    if args[0].lower() in ("--install", "-i", "install"):
+        security_tools_install(args[1] if len(args) > 1 else None)
+        return
+    if args[0].lower() in ("--deep", "-d", "deep"):
+        target = " ".join(args[1:]).strip()
+        if not target:
+            print("Usage: profiler network --deep <domain>")
+            return
+        print("Deep network scan (with borrowed security tools): %s" % target)
+        lines = scan_website_deep(target)
+        print("\n".join("  " + ln for ln in lines))
+        if interactive:
+            r = prompt("Save as a profile? (name or Enter to skip)")
+            if r:
+                pid = new_profile(r, tags=["network", "deep-scan"], notes="\n".join(lines))
+                add_record(pid, "osint", "\n".join(lines))
+                print("Saved to profile %s" % pid)
         return
     if args[0].lower() in ("--wifi", "-w", "wifi"):
         lines = scan_wifi()
@@ -2987,6 +3308,41 @@ def cmd_plugin(args, interactive=True):
         print("profiler plugin [add|list|remove <name>|run <name> <arg>]")
     else:
         plugin_exec(args[0], " ".join(args[1:]))
+
+
+# --------------------------------------------------------------------------
+# Shell access: run any terminal command (user-confirmed)
+# --------------------------------------------------------------------------
+def cmd_shell(args, interactive=True):
+    if not args:
+        print("Usage: profiler shell <command>")
+        return
+    cmd = " ".join(args)
+    if interactive:
+        r = input("Run shell command?\n  %s\n(y/N): " % cmd).strip().lower()
+        if r not in ("y", "yes"):
+            print("Cancelled.")
+            return
+    print("$ %s" % cmd)
+    try:
+        out = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+        print((out.stdout or "") + (out.stderr or "") or "(no output)")
+    except Exception as e:
+        print("shell error: %s" % e)
+
+
+def ai_run_shell(cmd, interactive=True):
+    """Run a shell command for the AI (with user confirmation)."""
+    if interactive:
+        r = input("AI wants to run shell command:\n  $ %s\nAllow? (y/N): " % cmd).strip().lower()
+        if r not in ("y", "yes"):
+            return "AI shell command rejected by user."
+    print("$ %s" % cmd)
+    try:
+        out = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+        return (out.stdout or "") + (out.stderr or "") or "(no output)"
+    except Exception as e:
+        return "shell error: %s" % e
 
 
 def run_tool_capture(cmd, timeout=120):
@@ -3617,6 +3973,9 @@ def run_one(cmd, ctx=None, interactive=True):
         return "menu"
     if w0 in ("plugin", "plugins"):
         cmd_plugin(rest, interactive)
+        return "menu"
+    if w0 in ("shell", "sh", "terminal", "run"):
+        cmd_shell(rest, interactive)
         return "menu"
     if w0 == "merge":
         if len(rest) < 2:
@@ -4578,6 +4937,9 @@ def dispatch_cli(args):
     if cmd in ("plugin", "plugins", "plugins-tool"):
         cmd_plugin(rest, interactive)
         return
+    if cmd in ("shell", "sh", "terminal", "run"):
+        cmd_shell(rest, interactive)
+        return
     if cmd == "merge":
         if len(rest) < 2:
             print("Usage: profiler merge <profileA> <profileB>")
@@ -4647,6 +5009,11 @@ def main():
 
 
 if __name__ == "__main__":
+    if not sys.stdout.isatty():
+        try:
+            sys.stdout.reconfigure(line_buffering=True)
+        except Exception:
+            pass
     try:
         ensure_dirs()
         main()
