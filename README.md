@@ -1,0 +1,88 @@
+# PROFILER v2.0
+
+**Personal Intelligence Terminal** — A single-file Python 3 tool for profile management, OSINT auto-enrichment, and entity expansion. No external dependencies (stdlib only).
+
+## Features
+
+- **Profile Management** — Create, edit, search, link profiles with records, photos, locations, reminders
+- **OSINT Auto-Enrichment** — From just a name, auto-gathers info from Wikipedia, Google News, social platform presence, DNS/RDAP, email/phone validation
+- **Entity Expansion** — `profiler expand "CompanyName"` → identifies the entity and auto-creates profiles for its major people, subsidiaries, and related organizations, all linked
+- **Relationships** — Link profiles, visualize the network graph
+- **Encryption** — PBKDF2-HMAC-SHA256 + HMAC-CTR with authentication tag
+- **Backup / Export / Import** — JSON, CSV, scheduled backups
+- **Reports** — HTML dossier generation per profile
+- **Case View** — Chronological timeline of all records + OSINT findings
+- **Dedup / Merge** — Detect and merge duplicate profiles
+- **Contact Scrape** — Extract phone/email/age/location from found profiles
+- **Deep OSINT** — Integrates with sherlock, holehe, subfinder, phoneinfoga (if installed)
+- **Reverse Image Search** — Bing-powered image search from the CLI
+- **Phone Contacts Import** — Import from termux-contact-list (Android)
+- **Recurring OSINT** — Schedule daily/weekly/monthly OSINT runs with change log
+- **Custom AI Provider** — Bring your own OpenAI-compatible API key (OpenAI, Groq, OpenRouter, DeepSeek, local, etc.)
+
+## Quick Install
+
+```bash
+sh install.sh
+# or manually:
+cp profiler.py /usr/bin/profiler
+chmod +x /usr/bin/profiler
+```
+
+## Quick Start
+
+```bash
+profiler                    # interactive menu
+profiler add "John Doe" --phone X --email Y
+profiler list
+profiler osint "John Doe"   # auto OSINT enrichment
+profiler expand "Ispahani"  # build entity network
+profiler graph              # relationship graph
+profiler case "John Doe"    # chronological dossier
+profiler report "John Doe"  # HTML report
+```
+
+## OSINT Example
+
+```
+> profiler osint "Cristiano Ronaldo"
+  → Wikipedia: Cristiano Ronaldo (born 5 Feb 1985), Portuguese footballer
+  → Google News: 10+ live headlines
+  → Web presence: documentary, airport named after him, etc.
+  → All auto-appended to profile timeline
+```
+
+## Entity Expansion Example
+
+```
+> profiler expand "Ispahani"
+  → Identified as: Bangladeshi conglomerate
+  → Created 11 profiles: main company + 4 persons + 4 subsidiaries + 2 related
+  → All linked in the relationship graph
+  → OSINT auto-enriched on each
+```
+
+## AI Provider (Optional)
+
+Configure your own provider (API key not bundled):
+
+```bash
+profiler ai config
+# → enter base URL, API key, model
+profiler ai ask "research this person and add to their profile"
+```
+
+Works with any OpenAI-compatible API: OpenAI, Groq, OpenRouter, DeepSeek, Together, LM Studio, local servers, etc.
+
+## Requirements
+
+- Python 3.7+ (stdlib only — no pip packages needed)
+- Linux, Android (Termux), macOS, Windows (limited)
+
+## Data Location
+
+All data stored in `~/.profiler/` (profiles, photos, backups, reports, config).
+
+## License
+
+MIT

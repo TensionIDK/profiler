@@ -1,0 +1,17 @@
+# Personal data - NEVER commit
+.profiler/
+ai.json
+*.key
+*.profiler
+profiles/
+backups/
+photos/
+reports/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS junk
+.DS_Store
+*.log
