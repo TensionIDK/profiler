@@ -2019,7 +2019,6 @@ def cmd_who(q):
 def cmd_ask(text, interactive=True):
     """Persistent AI chat. Screen only clears when the user types clear/cls/clean."""
     if text and interactive is False:
-        # one-shot non-interactive
         cfg = ai_load_config()
         if cfg.get("enabled") and cfg.get("base_url"):
             ai_agent(text, interactive)
@@ -2040,6 +2039,7 @@ def cmd_ask(text, interactive=True):
         return "menu"
     print("AI chat started. Type 'exit' to stop, 'clear'/'cls'/'clean' to clear the screen.")
     print("Type 'help' for profiler commands, or just talk naturally.\n")
+    history = None
     first = text
     while True:
         try:
@@ -2062,7 +2062,7 @@ def cmd_ask(text, interactive=True):
         if low in ("back", "menu", "home"):
             return "menu"
         try:
-            ai_agent(t, True)
+            _, history = ai_agent(t, True, history=history)
         except KeyboardInterrupt:
             continue
         except Exception as e:
@@ -2080,23 +2080,7 @@ def run_builtin_ask(text, interactive):
 
 
 def ai_chat():
-    print("Type 'exit' to leave.")
-    while True:
-        try:
-            t = input("you> ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print()
-            return "menu"
-        if not t:
-            continue
-        if t.lower() in ("exit", "quit", "q"):
-            return "menu"
-        try:
-            cmd_ask(t, True)
-        except KeyboardInterrupt:
-            continue
-        except Exception as e:
-            print("Error: %s" % e)
+    return cmd_ask("", True)
 
 
 # --------------------------------------------------------------------------
@@ -2400,17 +2384,22 @@ def ai_run_tool(tool_cmd, interactive=True):
     return None
 
 
-def ai_agent(user_text, interactive=True):
+def ai_agent(user_text, interactive=True, history=None):
+    """Send user text to the AI. If history is provided, continue that conversation."""
     cfg = ai_load_config()
     if not cfg.get("enabled") or not cfg.get("base_url"):
         print("AI provider not configured. Run:  profiler ai config")
-        return "menu"
+        return "menu", None
     system_prompt = AI_SYSTEM_INSTRUCTION
     plugin_desc = ai_plugin_descriptions()
     if plugin_desc:
         system_prompt += "\n\n" + plugin_desc
-    messages = [{"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_text}]
+    if history:
+        messages = list(history)
+        messages.append({"role": "user", "content": user_text})
+    else:
+        messages = [{"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_text}]
     cmd_executed = False
     for _ in range(10):
         reply = ai_call(messages, cfg)
@@ -2422,16 +2411,18 @@ def ai_agent(user_text, interactive=True):
                                             "CMD: ... | TOOL: ... | PLUGIN: ... | ANSWER: ..."})
                 continue
             print("AI> (no response from model)")
-            return "menu"
+            return "menu", messages
         m_cmd = re.search(r"^\s*CMD:\s*(.+)$", reply, re.M | re.I)
         if m_cmd:
             if cmd_executed:
+                messages.append({"role": "assistant", "content": reply})
                 print("AI> %s" % reply)
-                return "menu"
+                return "menu", messages
             cmdline = m_cmd.group(1).strip()
             print("PROFILER> %s" % cmdline)
             run_command(cmdline, interactive=interactive)
             cmd_executed = True
+            messages.append({"role": "assistant", "content": reply})
             messages.append({"role": "user",
                              "content": "I executed that command. Now give your final summary "
                                         "or answer. Do NOT run any more commands."})
@@ -2439,8 +2430,9 @@ def ai_agent(user_text, interactive=True):
         m_plugin = re.search(r"^\s*PLUGIN:\s*(.+)$", reply, re.M | re.I)
         if m_plugin:
             if cmd_executed:
+                messages.append({"role": "assistant", "content": reply})
                 print("AI> %s" % reply)
-                return "menu"
+                return "menu", messages
             pcmd = m_plugin.group(1).strip()
             parts = shlex.split(pcmd)
             if parts:
@@ -2450,57 +2442,44 @@ def ai_agent(user_text, interactive=True):
                 out = plugin_exec(pname, parg, verbose=False)
                 if out is None:
                     out = "plugin '%s' not found" % pname
+                messages.append({"role": "assistant", "content": reply})
                 messages.append({"role": "user",
                                  "content": "Plugin result:\n%s" % str(out)[:3000]})
                 continue
         m_tool = re.search(r"^\s*TOOL:\s*(.+)$", reply, re.M | re.I)
         if m_tool:
             if cmd_executed:
+                messages.append({"role": "assistant", "content": reply})
                 print("AI> %s" % reply)
-                return "menu"
+                return "menu", messages
             tool_cmd = m_tool.group(1).strip()
             print("TOOL> %s" % tool_cmd)
             results = ai_run_tool(tool_cmd, interactive)
             if not results:
+                messages.append({"role": "assistant", "content": reply})
                 messages.append({"role": "user",
                                  "content": "Tool result: tool failed or no results"})
                 continue
             text_blob = "\n".join(ln for _, lines in results for ln in lines)
+            messages.append({"role": "assistant", "content": reply})
             messages.append({"role": "user",
                              "content": "Tool result:\n%s" % text_blob[:3000]})
             continue
-        answer = reply
+        # Plain text answer (no prefix)
+        # Try to see if it's a simple profiler command (fallback)
+        plain = reply.strip()
         m_ans = re.search(r"^\s*ANSWER:\s*(.+)$", reply, re.M | re.I)
         if m_ans:
-            answer = m_ans.group(1).strip()
-        print("AI> %s" % answer)
-        return "menu"
+            plain = m_ans.group(1).strip()
+        messages.append({"role": "assistant", "content": reply})
+        print("AI> %s" % plain)
+        return "ok", messages
     print("AI> (session complete)")
-    return "menu"
+    return "menu", messages
 
 
 def ai_chat_interactive():
-    cfg = ai_load_config()
-    if not cfg.get("enabled") or not cfg.get("base_url"):
-        print("AI provider not configured. Run:  profiler ai config")
-        return "menu"
-    print("PROFILER AI chat. Type 'exit' to leave.")
-    while True:
-        try:
-            t = input("you> ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print()
-            return "menu"
-        if not t:
-            continue
-        if t.lower() in ("exit", "quit", "q", "bye"):
-            return "menu"
-        try:
-            ai_agent(t, True)
-        except KeyboardInterrupt:
-            continue
-        except Exception as e:
-            print("Error: %s" % e)
+    return cmd_ask("", True)
 
 
 def ai_analyze_image(image_path, prompt_text, interactive=True):
