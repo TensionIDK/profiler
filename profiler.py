@@ -2007,22 +2007,66 @@ def cmd_who(q):
 
 
 def cmd_ask(text, interactive=True):
-    if not text and interactive:
-        text = prompt("Ask")
-    if not text:
+    """Persistent AI chat. Screen only clears when the user types clear/cls/clean."""
+    if text and interactive is False:
+        # one-shot non-interactive
+        cfg = ai_load_config()
+        if cfg.get("enabled") and cfg.get("base_url"):
+            ai_agent(text, interactive)
+        else:
+            run_builtin_ask(text, interactive)
         return "menu"
     cfg = ai_load_config()
-    if cfg.get("enabled") and cfg.get("base_url"):
-        ai_agent(text, interactive)
+    if not (cfg.get("enabled") and cfg.get("base_url")):
+        print("AI provider not configured. Run:  profiler ai config")
+        if interactive:
+            print("(Using built-in parser for simple commands.)")
+        if text and interactive:
+            run_builtin_ask(text, interactive)
         return "menu"
+    if not interactive and not text:
+        print("AI chat requires an interactive terminal.")
+        print("Usage: profiler ask <text>  |  or run 'profiler' and type 'ask'")
+        return "menu"
+    print("AI chat started. Type 'exit' to stop, 'clear'/'cls'/'clean' to clear the screen.")
+    print("Type 'help' for profiler commands, or just talk naturally.\n")
+    first = text
+    while True:
+        try:
+            t = prompt("ask") if not first else first
+        except (KeyboardInterrupt, EOFError):
+            print()
+            return "menu"
+        first = None
+        if not t:
+            continue
+        low = t.strip().lower()
+        if low in ("exit", "quit", "q", "bye", "stop", "leave"):
+            return "menu"
+        if low in ("clear", "cls", "clean"):
+            clear_screen()
+            continue
+        if low in ("help", "?"):
+            print_commands()
+            continue
+        if low in ("back", "menu", "home"):
+            return "menu"
+        try:
+            ai_agent(t, True)
+        except KeyboardInterrupt:
+            continue
+        except Exception as e:
+            print("Error: %s" % e)
+
+
+def run_builtin_ask(text, interactive):
     cmd = understand(text)
     if cmd:
         print("PROFILER> %s" % cmd)
         run_command(cmd, interactive=interactive)
-        return "menu"
+        return
     print("I couldn't understand that. Try e.g. 'add a profile for John, phone 01711', "
           "'search the web for X', or 'show me John's records'.")
-    return "menu"
 
 
 def ai_chat():
@@ -4189,12 +4233,7 @@ def run_one(cmd, ctx=None, interactive=True):
         if w0 == "ai":
             cmd_ai(rest, interactive)
             return "menu"
-        if rest:
-            return cmd_ask(" ".join(rest), interactive)
-        if interactive:
-            return ai_chat()
-        print("Usage: ask <natural language text>")
-        return "menu"
+        return cmd_ask(" ".join(rest) if rest else "", interactive)
     if w0 == "manage":
         pid = resolve_profile(" ".join(rest), interactive)
         if pid:
@@ -5112,10 +5151,8 @@ def dispatch_cli(args):
             return
         if rest:
             cmd_ask(" ".join(rest), interactive)
-        elif interactive:
-            ai_chat()
         else:
-            print("Usage: profiler ask <natural language text>")
+            cmd_ask("", interactive)
         return
     if cmd in ("who", "who-at", "find-at"):
         cmd_who(" ".join(rest))
