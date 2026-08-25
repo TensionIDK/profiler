@@ -164,6 +164,13 @@ def clear_screen():
     os.system("clear" if os.name != "nt" else "cls")
 
 
+def pause(message="\n[Press Enter to continue] "):
+    try:
+        input(message)
+    except (KeyboardInterrupt, EOFError):
+        pass
+
+
 def is_cancel(s):
     return s.strip().lower() in ("c", "cancel", "q", "quit", "exit", "abort")
 
@@ -2430,11 +2437,144 @@ def ai_chat_interactive():
             print("Error: %s" % e)
 
 
+def ai_analyze_image(image_path, prompt_text, interactive=True):
+    """Send an image to the AI provider for analysis (vision capability).
+    OpenAI-compatible API: base64-encoded image in a content array.
+    Returns the AI text response, or None on failure."""
+    cfg = ai_load_config()
+    if not cfg.get("enabled") or not cfg.get("base_url"):
+        print("AI provider not configured. Run:  profiler ai config")
+        return None
+    if not os.path.exists(image_path):
+        print("Image not found: %s" % image_path)
+        return None
+    import base64
+    try:
+        with open(image_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        print("Could not read image: %s" % e)
+        return None
+    mime = "image/jpeg"
+    ext = os.path.splitext(image_path)[1].lower()
+    if ext in (".png",):
+        mime = "image/png"
+    elif ext in (".gif",):
+        mime = "image/gif"
+    elif ext in (".webp",):
+        mime = "image/webp"
+    content = [
+        {"type": "text", "text": prompt_text},
+        {"type": "image_url", "image_url": {"url": "data:%s;base64,%s" % (mime, b64)}},
+    ]
+    messages = [{"role": "user", "content": content}]
+    url = (cfg.get("base_url") or "").rstrip("/") + "/chat/completions"
+    payload = {
+        "model": cfg.get("model", "gpt-4o-mini"),
+        "messages": messages,
+        "max_tokens": cfg.get("max_tokens", 2000),
+    }
+    headers = {"Content-Type": "application/json", "User-Agent": BROWSER_UA}
+    if cfg.get("api_key"):
+        headers["Authorization"] = "Bearer %s" % cfg["api_key"]
+    try:
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                     headers=headers)
+        with urllib.request.urlopen(req, timeout=120) as r:
+            data = json.loads(r.read().decode("utf-8", "replace"))
+        msg = ((data.get("choices") or [{}])[0].get("message") or {})
+        return (msg.get("content") or "").strip() or None
+    except urllib.error.HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", "replace")
+        except Exception:
+            body = ""
+        print("AI provider error %s: %s" % (e.code, body[:300]))
+        if "image" in body.lower() and ("not support" in body.lower() or "vision" in body.lower()):
+            print("\nNote: your current model '%s' does not support image/vision input." %
+                  cfg.get("model", ""))
+            print("Models with vision support (check your provider): gpt-4o, gpt-4o-mini, "
+                  "claude-3, gemini-1.5, llama-3.2-vision, qwen-vl, etc.")
+        return None
+    except Exception as e:
+        print("AI connection error: %s" % e)
+        return None
+
+
+def cmd_ai_analyze_photo(args, interactive=True):
+    """profiler ai photo <file> [--profile Name] — analyze an image and optionally
+    create/update a profile or search online based on the photo."""
+    if not args:
+        print("Usage: profiler ai photo <image_file> [--profile Name]")
+        print("       profiler ai photo <image_file> [--search <query>]")
+        return
+    flags = {}
+    positional = []
+    i = 0
+    while i < len(args):
+        if args[i] in ("--profile", "--name", "-p"):
+            if i + 1 < len(args):
+                flags["profile"] = args[i + 1]
+                i += 2
+                continue
+        elif args[i] in ("--search", "-s"):
+            if i + 1 < len(args):
+                flags["search"] = args[i + 1]
+                i += 2
+                continue
+        positional.append(args[i])
+        i += 1
+    if not positional:
+        print("No image file provided.")
+        return
+    img = positional[0]
+    if not os.path.exists(img):
+        print("Image not found: %s" % img)
+        return
+
+    print("Analyzing image: %s (AI vision)..." % img)
+    prompt = ("Analyze this image in detail for profiling purposes. Describe what/who "
+              "is in it, visible identifying features, any text, logos, locations, "
+              "or objects. Be factual about what is visible. Then suggest what online "
+              "searches would help identify or profile the subject.")
+    result = ai_analyze_image(img, prompt, interactive)
+    if not result:
+        print("AI did not return an analysis.")
+        return
+    print("\n" + "=" * 50)
+    print(result)
+    print("=" * 50)
+
+    profile_name = flags.get("profile")
+    if profile_name:
+        pid = None
+        for p in list_pids():
+            if load(p)["name"].lower() == profile_name.lower():
+                pid = p
+                break
+        if not pid:
+            pid = new_profile(profile_name, tags=["ai-vision"], notes=result)
+            print("\nCreated profile: %s (ID: %s)" % (profile_name, pid))
+        p = load(pid)
+        if img not in p.get("photos", []):
+            p["photos"].append(img)
+        add_record(pid, "osint", "AI image analysis:\n%s" % result)
+        save(pid, p)
+        print("Analysis saved to profile '%s'." % load(pid)["name"])
+
+    if flags.get("search"):
+        print("\nSearching online based on the photo...")
+        cmd_websearch(flags["search"])
+
+
 def cmd_ai(args, interactive=True):
     if not args:
         ai_chat_interactive()
         return
     sub = args[0].lower()
+    if sub in ("photo", "image", "img", "vision"):
+        cmd_ai_analyze_photo(args[1:], interactive)
+        return
     if sub in ("config", "setup", "configure"):
         ai_configure(interactive)
     elif sub in ("status", "info", "show"):
@@ -4496,6 +4636,7 @@ def cmd_manage(pid):
             continue
         except Exception as e:
             print("Error: %s" % e)
+        pause()
 
 
 # --------------------------------------------------------------------------
@@ -4700,6 +4841,7 @@ def app_menu():
             if r == "exit":
                 print("\nSession saved. Goodbye.")
                 return
+            pause()
             continue
         try:
             r = run_command(raw)
@@ -4710,6 +4852,7 @@ def app_menu():
         if r == "exit":
             print("\nSession saved. Goodbye.")
             return
+        pause()
 
 
 # --------------------------------------------------------------------------
