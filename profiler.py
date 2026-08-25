@@ -1261,7 +1261,135 @@ SOCIAL_PLATFORMS = {
     "Keybase": "https://keybase.io/%s",
     "Flickr": "https://www.flickr.com/people/%s/",
     "VK": "https://vk.com/%s",
+    # Additional Sherlock-style platforms (40+)
+    "Medium": "https://medium.com/@%s",
+    "Dev.to": "https://dev.to/%s",
+    "Hashnode": "https://hashnode.com/@%s",
+    "HackerOne": "https://hackerone.com/%s",
+    "Bugcrowd": "https://bugcrowd.com/%s",
+    "Scribd": "https://www.scribd.com/%s",
+    "Snapchat": "https://www.snapchat.com/add/%s",
+    "Discord": "https://discord.com/users/%s",
+    "Roblox": "https://www.roblox.com/user.aspx?username=%s",
+    "Chess.com": "https://www.chess.com/member/%s",
+    "Codecademy": "https://www.codecademy.com/profiles/%s",
+    "Codepen": "https://codepen.io/%s",
+    "Coderwall": "https://coderwall.com/%s",
+    "DockerHub": "https://hub.docker.com/u/%s",
+    "Duolingo": "https://duolingo.com/profile/%s",
+    "Ebay": "https://www.ebay.com/usr/%s",
+    "Etsy": "https://www.etsy.com/shop/%s",
+    "Fiverr": "https://www.fiverr.com/%s",
+    "Freelancer": "https://www.freelancer.com/u/%s",
+    "Gravatar": "https://en.gravatar.com/%s",
+    "IFTTT": "https://ifttt.com/p/%s",
+    "Imgur": "https://imgur.com/user/%s",
+    "Issuu": "https://issuu.com/%s",
+    "Kaggle": "https://www.kaggle.com/%s",
+    "LeetCode": "https://leetcode.com/%s/",
+    "Letterboxd": "https://letterboxd.com/%s/",
+    "Mixcloud": "https://www.mixcloud.com/%s/",
+    "MyAnimeList": "https://myanimelist.net/profile/%s",
+    "NPM": "https://www.npmjs.com/~%s",
+    "OK": "https://ok.ru/%s",
+    "OpenStreetMap": "https://www.openstreetmap.org/user/%s",
+    "Patreon": "https://www.patreon.com/%s",
+    "Pastebin": "https://pastebin.com/u/%s",
+    "PayPal": "https://www.paypal.com/paypalme/%s",
+    "PyPI": "https://pypi.org/user/%s",
+    "Replit": "https://replit.com/@%s",
+    "ResearchGate": "https://www.researchgate.net/profile/%s",
+    "Rumble": "https://rumble.com/user/%s",
+    "SlideShare": "https://www.slideshare.net/%s",
+    "SmugMug": "https://smugmug.com/%s",
+    "SourceForge": "https://sourceforge.net/u/%s",
+    "StackOverflow": "https://stackoverflow.com/users/%s?tab=profile",
+    "Trello": "https://trello.com/%s",
+    "TripAdvisor": "https://www.tripadvisor.com/members/%s",
+    "Unsplash": "https://unsplash.com/@%s",
+    "Vimeo": "https://vimeo.com/%s",
+    "WordPress": "https://%s.wordpress.com",
+    "Zhihu": "https://www.zhihu.com/people/%s",
+    "Behance": "https://www.behance.net/%s",
+    "Dribbble": "https://dribbble.com/%s",
+    "ProductHunt": "https://www.producthunt.com/@%s",
+    "YouPic": "https://youpic.com/photographer/%s/",
+    "Bandcamp": "https://bandcamp.com/%s",
+    "About.me": "https://about.me/%s",
+    "AngelList": "https://angel.co/u/%s",
+    "Gumroad": "https://gumroad.com/%s",
+    "HackTheBox": "https://forum.hackthebox.eu/profile/%s",
+    "TryHackMe": "https://tryhackme.com/p/%s",
+    "Anilist": "https://anilist.co/user/%s/",
+    "BitBucket": "https://bitbucket.org/%s/",
+    "BuyMeACoffee": "https://buymeacoffee.com/%s",
+    "Carrd": "https://%s.carrd.co",
+    "Cloob": "https://www.cloob.com/name/%s",
+    "Codeforces": "https://codeforces.com/profile/%s",
+    "Contently": "https://%s.contently.com",
+    "Cracked": "https://www.cracked.com/members/%s/",
+    "Crevado": "https://%s.crevado.com",
+    "DEV": "https://dev.to/%s",
+    "DeviantArt": "https://www.deviantart.com/%s",
+    "Disqus": "https://disqus.com/by/%s/",
+    "Ello": "https://ello.co/%s",
+    "Fandom": "https://www.fandom.com/u/%s",
+    "Fotolog": "https://fotolog.com/%s",
+    "Giphy": "https://giphy.com/%s",
+    "GitBook": "https://%s.gitbook.io",
+    "Godot": "https://godotengine.org/qa/user/%s",
+    "Gravatar": "https://en.gravatar.com/%s",
+    "Gumtree": "https://www.gumtree.com/profiles/%s",
+    "Hackaday": "https://hackaday.io/%s",
+    "Houzz": "https://houzz.com/user/%s",
+    "Instructables": "https://www.instructables.com/member/%s",
+    "Kickstarter": "https://www.kickstarter.com/profile/%s",
+    "Kongregate": "https://www.kongregate.com/accounts/%s",
+    "Last.fm": "https://www.last.fm/user/%s",
+    "LiveJournal": "https://%s.livejournal.com",
+    "Myspace": "https://myspace.com/%s",
+    "NameMC": "https://namemc.com/profile/%s",
+    "Periscope": "https://www.periscope.tv/%s",
+    "Pexels": "https://www.pexels.com/@%s",
+    "Plurk": "https://www.plurk.com/%s",
+    "Quizlet": "https://quizlet.com/%s",
+    "RocketChat": "https://open.rocket.chat/direct/%s",
+    "Shutterstock": "https://www.shutterstock.com/g/%s",
+    "Skype": "https://join.skype.com/invite/%s",
+    "Slideshare": "https://www.slideshare.net/%s",
+    "Taringa": "https://www.taringa.net/%s",
+    "Tinder": "https://tinder.com/@%s",
+    "TradingView": "https://www.tradingview.com/u/%s/",
+    "Trakt": "https://trakt.tv/users/%s",
+    "Tumblr": "https://%s.tumblr.com",
+    "Venmo": "https://venmo.com/%s",
+    "VSCO": "https://vsco.co/%s",
+    "Wattpad": "https://www.wattpad.com/user/%s",
+    "Weibo": "https://www.weibo.com/u/%s",
+    "WeHeartIt": "https://weheartit.com/%s",
+    "Wix": "https://%s.wix.com",
+    "Xbox": "https://www.xbox.com/play/user/%s",
+    "YouNow": "https://www.younow.com/%s",
+    "Youtube": "https://www.youtube.com/@%s",
+    "Zomato": "https://www.zomato.com/%s",
+    "Zillow": "https://www.zillow.com/profile/%s",
 }
+
+
+# Sherlock-style "not found" patterns in page body (if we see these, user likely doesn't exist)
+NOT_FOUND_INDICATORS = [
+    "not found", "page not found", "this page doesn't exist", "user not found",
+    "profile not found", "doesn't exist", "the page you requested was not found",
+    "404", "no user", "no profile", "couldn't find", "cannot find",
+    "page does not exist", "this user doesn't exist", "no account",
+    "this user has not been found", "this profile is not available",
+    "not exist", "unknown user", "invalid user", "user doesn't exist",
+    "sorry, we couldn't find", "member not found", "account not found",
+    "this username is not taken", "the user could not be found",
+    "page unavailable", "content not available", "no such user",
+    "there is no account", "this account has been deleted",
+    "the link you followed may be broken", "user not exist",
+]
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -1355,11 +1483,22 @@ def profile_targets(p):
 
 def osint_username(username):
     lines = []
+    checked = 0
     for platform, tpl in SOCIAL_PLATFORMS.items():
         url = tpl % username
-        st = http_status(url, timeout=6)
+        st = http_status(url, timeout=5)
+        checked += 1
         if st == 200:
-            lines.append("[+] %s: %s" % (platform, url))
+            # Fetch page body to confirm user exists (Sherlock technique)
+            page = http_get(url, timeout=6)
+            body = (page or "").lower()
+            looks_missing = any(ind in body for ind in NOT_FOUND_INDICATORS)
+            title_match = re.search(r"<title[^>]*>(.*?)</title>", page or "", re.S | re.I)
+            title = re.sub(r"<[^>]+>", "", title_match.group(1)).strip() if title_match else ""
+            if not looks_missing:
+                lines.append("[+] %s: %s" % (platform, url))
+            else:
+                lines.append("[~] %s: %s (page suggests not found)" % (platform, url))
         elif st in (301, 302, 303, 307, 308):
             lines.append("[~] %s: %s (redirect - likely present)" % (platform, url))
         elif st in (403, 429):
@@ -1656,31 +1795,66 @@ def http_get_text(url, timeout=15, ua=None):
 def web_search(query, n=5):
     q = urllib.parse.quote(query)
     results = []
-    patterns = [
+    search_sources = [
+        # DDG HTML (primary)
         ("https://html.duckduckgo.com/html/?q=%s" % q,
-         r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>'),
+         r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>.*?class="result__snippet"[^>]*>(.*?)</(?:a|div|span)>',
+         r'class="result__snippet"[^>]*>(.*?)</(?:a|div|span)>'),
+        # Alternate DDG pattern
         ("https://html.duckduckgo.com/html/?q=%s" % q,
-         r'href="([^"]+)"[^>]*class="result__a"[^>]*>(.*?)</a>'),
+         r'href="([^"]+)"[^>]*class="result__a"[^>]*>(.*?)</a>.*?class="result__snippet"[^>]*>(.*?)</(?:a|div|span)>',
+         r'class="result__snippet"[^>]*>(.*?)</(?:a|div|span)>'),
+        # DDG lite
         ("https://lite.duckduckgo.com/lite/?q=%s" % q,
-         r'class="result-link"[^>]*href="([^"]+)"[^>]*>(.*?)</a>'),
+         r'class="result-link"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
+         r'class="result-snippet"[^>]*>(.*?)</td>'),
     ]
-    for url, pat in patterns:
-        for attempt in range(2):
-            html = http_get_text(url, timeout=12)
+    for url, pat, snippet_pat in search_sources:
+        for attempt in range(3):
+            try:
+                html = http_get_text(url, timeout=12, ua=BROWSER_UA)
+            except Exception:
+                html = None
             if html:
+                lines = []
+                # Try full regex with snippet first
                 for m in re.finditer(pat, html, re.S):
                     href = urllib.parse.unquote(m.group(1))
                     title = re.sub(r"<[^>]+>", "", m.group(2)).strip()
+                    snippet = ""
+                    if m.lastindex >= 3:
+                        snippet = re.sub(r"<[^>]+>", "", m.group(3)).strip()
+                    if not snippet:
+                        extra = re.search(snippet_pat.replace(snippet_pat.split(".*?")[0], ""), html[m.end():m.end()+500], re.S)
+                        if extra:
+                            snippet = re.sub(r"<[^>]+>", "", extra.group(1)).strip()
                     if title and href.startswith("http"):
-                        results.append((title, href))
+                        title = title[:80]
+                        snippet = snippet[:200]
+                        results.append((title, href, snippet))
+                    if len(results) >= n:
+                        break
+                if results:
+                    break
+                # Fallback: title-only
+                for m in re.finditer(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html, re.S):
+                    href = urllib.parse.unquote(m.group(1))
+                    title = re.sub(r"<[^>]+>", "", m.group(2)).strip()
+                    if title and href.startswith("http"):
+                        results.append((title, href, ""))
                     if len(results) >= n:
                         break
             if results:
                 break
-            time.sleep(1.5)
+            time.sleep(1)
         if results:
             break
-    lines = ["%d. %s  %s" % (i, t, h) for i, (t, h) in enumerate(results[:n], 1)]
+    lines = []
+    for i, (t, h, s) in enumerate(results[:n], 1):
+        line = "%d. %s  %s" % (i, t, h)
+        if s:
+            line += "\n   %s" % s
+        lines.append(line)
     if not lines:
         for _, alt in (osint_web(query) + osint_news(query)):
             for ln in alt:
@@ -1689,16 +1863,17 @@ def web_search(query, n=5):
     return [("Web search: %s" % query, lines or ["(no results)"])]
 
 
-def fetch_url(url, max_chars=1200):
+def fetch_url(url, max_chars=2000):
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
-    text = http_get_text(url, timeout=15)
-    if not text:
+    html = http_get_text(url, timeout=15, ua=BROWSER_UA)
+    if not html:
         return [("Fetch", ["failed to fetch %s" % url])]
-    return [("Fetch: %s" % url, [html_to_text(text)[:max_chars] or "(empty page)"])]
+    text = html_to_text(html)
+    return [("Fetch: %s" % url, [text[:max_chars] or "(empty page)"])]
 
 
-def fetch_url(url, max_chars=1200):
+def fetch_url(url, max_chars=2000):
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     html = http_get(url, timeout=15)
@@ -2275,7 +2450,25 @@ explain yourself, do not output any reasoning. Output ONLY the single command li
 - For network/website analysis use 'network <domain>'.
 - Combine websearch/fetch freely to gather info about a person (their social profiles, public
   posts, news, photos) then report findings with ANSWER and optionally save via record.
-- Be helpful, concise, ethical: only lawful public sources; profile data for known/consenting contacts."""
+- Be helpful, concise, ethical: only lawful public sources; profile data for known/consenting contacts.
+
+## IMPORTANT: Full-profile workflows — DO THE WHOLE THING, don't ask
+When the user asks to "profile" someone, "do a full profile", "run OSINT on <name>",
+or similar, DO ALL STEPS AT ONCE in a single chained CMD line. Do NOT stop and ask
+"shall I proceed?" or "which person?" — just execute the complete workflow.
+
+The standard full-profile workflow for a target is:
+   CMD: new <name> then osint <name> then contacts <name> then case <name>
+(create the profile, auto-enrich OSINT, scrape found profiles for contact info,
+ then show the chronological dossier). Use 'expand <name>' if the target is a
+company/org and the user wants related people/subsidiaries.
+
+## IMPORTANT: Always report what you found
+After running any command or tool, ALWAYS end your reply with an ANSWER that
+summarizes the actual results you got. Never say "I need to run <command>" — run it.
+If a search/fetch returned nothing, say exactly that and suggest the next useful step.
+Do not ask the user for permission to run standard steps; only ask when genuinely
+ambiguous (e.g. the name matches multiple existing profiles)."""
 
 
 def ai_load_config():
@@ -2415,24 +2608,25 @@ def ai_agent(user_text, interactive=True, history=None):
         m_cmd = re.search(r"^\s*CMD:\s*(.+)$", reply, re.M | re.I)
         if m_cmd:
             if cmd_executed:
+                # A second command already ran; the model should summarize now.
+                # Feed it back so it gives a final ANSWER instead of more commands.
                 messages.append({"role": "assistant", "content": reply})
-                print("AI> %s" % reply)
-                return "menu", messages
+                messages.append({"role": "user",
+                                 "content": "Commands are done. Now give your final ANSWER summarizing "
+                                            "the results. Do NOT output another CMD."})
+                continue
             cmdline = m_cmd.group(1).strip()
             print("PROFILER> %s" % cmdline)
-            run_command(cmdline, interactive=interactive)
+            out = run_command_capture(cmdline, interactive=interactive)
             cmd_executed = True
             messages.append({"role": "assistant", "content": reply})
             messages.append({"role": "user",
-                             "content": "I executed that command. Now give your final summary "
-                                        "or answer. Do NOT run any more commands."})
+                             "content": "I executed that command. Output:\n%s\n\n"
+                                        "Now give your final summary or answer based on that output. "
+                                        "Do NOT run any more commands." % (out or "(no output)")})
             continue
         m_plugin = re.search(r"^\s*PLUGIN:\s*(.+)$", reply, re.M | re.I)
         if m_plugin:
-            if cmd_executed:
-                messages.append({"role": "assistant", "content": reply})
-                print("AI> %s" % reply)
-                return "menu", messages
             pcmd = m_plugin.group(1).strip()
             parts = shlex.split(pcmd)
             if parts:
@@ -2448,10 +2642,6 @@ def ai_agent(user_text, interactive=True, history=None):
                 continue
         m_tool = re.search(r"^\s*TOOL:\s*(.+)$", reply, re.M | re.I)
         if m_tool:
-            if cmd_executed:
-                messages.append({"role": "assistant", "content": reply})
-                print("AI> %s" % reply)
-                return "menu", messages
             tool_cmd = m_tool.group(1).strip()
             print("TOOL> %s" % tool_cmd)
             results = ai_run_tool(tool_cmd, interactive)
@@ -2466,7 +2656,6 @@ def ai_agent(user_text, interactive=True, history=None):
                              "content": "Tool result:\n%s" % text_blob[:3000]})
             continue
         # Plain text answer (no prefix)
-        # Try to see if it's a simple profiler command (fallback)
         plain = reply.strip()
         m_ans = re.search(r"^\s*ANSWER:\s*(.+)$", reply, re.M | re.I)
         if m_ans:
@@ -4045,6 +4234,22 @@ def run_command(text, ctx=None, interactive=True):
         if last in ("exit", "quit"):
             return last
     return last
+
+
+def run_command_capture(text, ctx=None, interactive=True):
+    """Run a profiler command and return its printed output as a string."""
+    import io
+    buf = io.StringIO()
+    old = sys.stdout
+    sys.stdout = buf
+    try:
+        try:
+            run_command(text, ctx=ctx, interactive=interactive)
+        except Exception as e:
+            buf.write("error: %s\n" % e)
+    finally:
+        sys.stdout = old
+    return buf.getvalue()
 
 
 def run_one(cmd, ctx=None, interactive=True):
