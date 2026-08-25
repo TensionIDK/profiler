@@ -27,6 +27,7 @@ import re
 import shlex
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import time
@@ -2209,13 +2210,21 @@ explain yourself, do not output any reasoning. Output ONLY the single command li
    and can respond again (CMD or final answer). Available tools:
    - websearch <query>    (web search)
    - fetch <url>          (fetch a web page)
+   - network <target>     (scan a website: DNS, TLS, ports, subdomains, IP)
+   - scan wifi            (scan wifi networks)
+   - scan bluetooth       (scan bluetooth devices)
 
-3) ANSWER: <text>
+3) PLUGIN: <name> <arg>
+   When the user has configured a custom plugin and it matches the task, call it.
+   (A list of configured plugins, if any, will be appended to your instructions.)
+
+4) ANSWER: <text>
    For any plain response, summary, or explanation.
 
 ## Rules
 - If a name is ambiguous or unknown, use 'list' or 'search' first, or ask the user.
 - For OSINT requests always prefer 'osint <name>' to auto-enrich.
+- For network/website analysis use 'network <domain>'.
 - Combine websearch/fetch freely to gather info about a person (their social profiles, public
   posts, news, photos) then report findings with ANSWER and optionally save via record.
 - Be helpful, concise, ethical: only lawful public sources; profile data for known/consenting contacts."""
@@ -2306,6 +2315,16 @@ def ai_run_tool(tool_cmd):
     m = re.match(r"^(fetch|geturl|open)\s+(\S.+)$", low)
     if m:
         return fetch_url(m.group(2).strip())
+    m = re.match(r"^network\s+(.+)$", low)
+    if m:
+        lines = scan_website(m.group(1).strip())
+        return [("Network scan: %s" % m.group(1).strip(), lines)]
+    m = re.match(r"^scan\s+(wifi|wlan)$", low)
+    if m:
+        return [("WiFi scan", scan_wifi())]
+    m = re.match(r"^scan\s+(bluetooth|bt|ble)$", low)
+    if m:
+        return [("Bluetooth scan", scan_bluetooth())]
     return None
 
 
@@ -2314,16 +2333,20 @@ def ai_agent(user_text, interactive=True):
     if not cfg.get("enabled") or not cfg.get("base_url"):
         print("AI provider not configured. Run:  profiler ai config")
         return "menu"
-    messages = [{"role": "system", "content": AI_SYSTEM_INSTRUCTION},
+    system_prompt = AI_SYSTEM_INSTRUCTION
+    plugin_desc = ai_plugin_descriptions()
+    if plugin_desc:
+        system_prompt += "\n\n" + plugin_desc
+    messages = [{"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_text}]
-    for _ in range(8):
+    for _ in range(10):
         reply = ai_call(messages, cfg)
         if not reply:
             if len(messages) == 2:
                 messages.append({"role": "user",
                                  "content": "Answer directly now. Do NOT output any reasoning "
                                             "or disclaimers. Reply with exactly one of: "
-                                            "CMD: ... | TOOL: ... | ANSWER: ..."})
+                                            "CMD: ... | TOOL: ... | PLUGIN: ... | ANSWER: ..."})
                 continue
             print("AI> (no response from model)")
             return "menu"
@@ -2335,6 +2358,20 @@ def ai_agent(user_text, interactive=True):
             messages.append({"role": "user",
                              "content": "I executed that command. Now give your final summary or answer."})
             continue
+        m_plugin = re.search(r"^\s*PLUGIN:\s*(.+)$", reply, re.M | re.I)
+        if m_plugin:
+            pcmd = m_plugin.group(1).strip()
+            parts = shlex.split(pcmd)
+            if parts:
+                pname = parts[0]
+                parg = " ".join(parts[1:])
+                print("PLUGIN> %s" % pcmd)
+                out = plugin_exec(pname, parg, verbose=False)
+                if out is None:
+                    out = "plugin '%s' not found" % pname
+                messages.append({"role": "user",
+                                 "content": "Plugin result:\n%s" % str(out)[:3000]})
+                continue
         m_tool = re.search(r"^\s*TOOL:\s*(.+)$", reply, re.M | re.I)
         if m_tool:
             tool_cmd = m_tool.group(1).strip()
@@ -2559,6 +2596,397 @@ def cmd_expand(name, interactive=True):
 
 def tool_available(tool):
     return shutil.which(tool) is not None
+
+
+# --------------------------------------------------------------------------
+# Network scanning: website / wifi / bluetooth profiling
+# --------------------------------------------------------------------------
+def clean_domain(t):
+    t = (t or "").strip().lower()
+    t = re.sub(r"^https?://", "", t)
+    t = re.sub(r"^www\.", "", t)
+    t = t.split("/")[0].split(":")[0].split("?")[0]
+    return t
+
+
+def http_headers(url, timeout=12):
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": OSINT_UA})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            hdrs = dict(r.getheaders())
+            return r.getcode(), hdrs
+        return None, {}
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers)
+    except Exception as e:
+        return None, {"error": str(e)}
+
+
+def tls_certificate(domain, port=443):
+    try:
+        ctx = ssl.create_default_context()
+        with socket.create_connection((domain, port), timeout=8) as sock:
+            with ctx.wrap_socket(sock, server_hostname=domain) as ss:
+                cert = ss.getpeercert()
+        return cert
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def port_scan(domain, ports=(21, 22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 3389, 5432, 6379, 8080, 8443, 8888)):
+    open_ports = []
+    for p in ports:
+        try:
+            with socket.create_connection((domain, p), timeout=3):
+                open_ports.append(p)
+        except Exception:
+            pass
+    return open_ports
+
+
+def scan_website(target):
+    domain = clean_domain(target)
+    lines = []
+    lines.append("Target: %s" % target)
+    lines.append("Domain: %s" % domain)
+
+    # DNS resolution
+    try:
+        host, aliases, addrs = socket.gethostbyname_ex(domain)
+        lines.append("DNS: %s" % (", ".join(addrs) or "-"))
+        if aliases:
+            lines.append("Aliases: %s" % ", ".join(aliases))
+    except Exception as e:
+        lines.append("DNS: failed (%s)" % e)
+
+    # HTTP headers
+    for scheme in ("https", "http"):
+        code, hdrs = http_headers("%s://%s/" % (scheme, domain))
+        if hdrs and not hdrs.get("error"):
+            lines.append("HTTP (%s): status %s" % (scheme, code))
+            for k in ("server", "x-powered-by", "content-type", "strict-transport-security",
+                      "set-cookie", "via", "x-aspnet-version", "x-generator"):
+                if hdrs.get(k):
+                    lines.append("  %s: %s" % (k, hdrs[k][:120]))
+            break
+
+    # TLS certificate
+    cert = tls_certificate(domain)
+    if cert and not cert.get("error"):
+        subj = cert.get("subject", ())
+        for item in subj:
+            if isinstance(item, (list, tuple)) and len(item) >= 2:
+                k, v = item[0], item[1]
+                if k == "commonName":
+                    lines.append("TLS CN: %s" % v)
+        san = cert.get("subjectAltName", ())
+        if san:
+            lines.append("TLS SAN: %s" % ", ".join(v for _, v in san[:8]))
+        for k in ("notBefore", "notAfter"):
+            if cert.get(k):
+                lines.append("TLS %s: %s" % (k.replace("not", "valid from"), cert[k]))
+        issuer = cert.get("issuer", ())
+        for item in issuer:
+            if isinstance(item, (list, tuple)) and len(item) >= 2:
+                k, v = item[0], item[1]
+                if k == "organizationName":
+                    lines.append("TLS issuer: %s" % v)
+    else:
+        lines.append("TLS: %s" % cert.get("error", "no certificate"))
+
+    # IP intelligence
+    try:
+        ip = socket.gethostbyname(domain)
+        lines.append("IP: %s" % ip)
+        geo = http_get_json("http://ip-api.com/json/" + ip)
+        if geo and geo.get("status") == "success":
+            lines.append("IP country: %s, region: %s, city: %s" % (
+                geo.get("country"), geo.get("regionName"), geo.get("city")))
+            lines.append("IP ISP: %s / %s" % (geo.get("isp"), geo.get("org")))
+            lines.append("IP AS: %s" % geo.get("as"))
+    except Exception:
+        pass
+
+    # Port scan (quick)
+    ports = port_scan(domain)
+    if ports:
+        lines.append("Open ports: %s" % ", ".join(str(p) for p in ports))
+    else:
+        lines.append("Open ports: none found (common list)")
+
+    # Subdomains
+    sub = osint_subdomains(domain)
+    if sub:
+        sub_lines = sub[0][1]
+        if sub_lines and sub_lines[0] != "lookup failed":
+            lines.append("Subdomains: %s" % (", ".join(sub_lines[:15]) or "none"))
+
+    return lines
+
+
+def scan_wifi():
+    lines = []
+    if tool_available("termux-wifi-scaninfo"):
+        print("  [wifi] scanning networks (termux-wifi-scaninfo)...")
+        out = run_tool_capture(["termux-wifi-scaninfo"], timeout=20)
+        try:
+            nets = json.loads(out)
+            if not nets:
+                lines.append("No wifi networks found.")
+            for n in nets[:20]:
+                ssid = n.get("ssid") or "(hidden)"
+                bssid = n.get("bssid", "")
+                rssi = n.get("rssi", "")
+                freq = n.get("frequency", "")
+                lines.append("WiFi: %s | BSSID %s | RSSI %s dBm | %s MHz" % (ssid, bssid, rssi, freq))
+        except Exception:
+            lines.append("Wifi scan: could not parse output.")
+    elif tool_available("termux-wifi-connectioninfo"):
+        out = run_tool_capture(["termux-wifi-connectioninfo"], timeout=10)
+        try:
+            c = json.loads(out)
+            lines.append("Connected to WiFi: %s (IP %s)" % (
+                c.get("ssid", "?"), c.get("ip", "?")))
+        except Exception:
+            lines.append("Wifi connection info unavailable.")
+    else:
+        lines.append("WiFi scanning requires Termux API (termux-api).")
+        lines.append("On PC/Linux, use external tools like nmcli/iwlist instead.")
+    return lines
+
+
+def scan_bluetooth():
+    lines = []
+    if tool_available("termux-bluetooth-scaninfo"):
+        print("  [bluetooth] scanning devices (termux-bluetooth-scaninfo)...")
+        out = run_tool_capture(["termux-bluetooth-scaninfo"], timeout=30)
+        try:
+            devs = json.loads(out)
+            if not devs:
+                lines.append("No bluetooth devices found.")
+            for d in devs[:20]:
+                name = d.get("name") or "(unknown)"
+                mac = d.get("address", "")
+                lines.append("BT: %s | %s" % (name, mac))
+        except Exception:
+            lines.append("Bluetooth scan: could not parse output.")
+    else:
+        lines.append("Bluetooth scanning requires Termux API (termux-api).")
+    return lines
+
+
+def cmd_network(args, interactive=True):
+    if not args:
+        print("Usage: profiler network <domain/url> | network --wifi | network --bluetooth")
+        return
+    if args[0].lower() in ("--wifi", "-w", "wifi"):
+        lines = scan_wifi()
+        for ln in lines:
+            print("  " + ln)
+        if interactive:
+            r = prompt("Save as a profile? (name or Enter to skip)")
+            if r:
+                pid = new_profile(r, tags=["network", "wifi"], notes="\n".join(lines))
+                add_record(pid, "osint", "\n".join(lines))
+                print("Saved to profile %s" % pid)
+        return
+    if args[0].lower() in ("--bluetooth", "-b", "bluetooth", "bt"):
+        lines = scan_bluetooth()
+        for ln in lines:
+            print("  " + ln)
+        if interactive:
+            r = prompt("Save as a profile? (name or Enter to skip)")
+            if r:
+                pid = new_profile(r, tags=["network", "bluetooth"], notes="\n".join(lines))
+                add_record(pid, "osint", "\n".join(lines))
+                print("Saved to profile %s" % pid)
+        return
+
+    target = " ".join(args)
+    print("Scanning network target: %s ..." % target)
+    lines = scan_website(target)
+    print("\n".join("  " + ln for ln in lines))
+
+    if interactive:
+        r = prompt("Save as a profile? (name or Enter to skip)")
+        if r:
+            pid = new_profile(r, tags=["network", "website"], notes="\n".join(lines))
+            add_record(pid, "osint", "\n".join(lines))
+            print("Saved to profile %s" % pid)
+
+
+# --------------------------------------------------------------------------
+# Custom plugin system: user-defined tools, usable by the AI
+# --------------------------------------------------------------------------
+PLUGIN_CONFIG = os.path.join(BASE, "plugins.json")
+
+
+def plugin_load():
+    try:
+        with open(PLUGIN_CONFIG, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def plugin_save(plugins):
+    try:
+        with open(PLUGIN_CONFIG, "w", encoding="utf-8") as f:
+            json.dump(plugins, f, indent=2)
+    except Exception:
+        print("Could not save plugins.")
+
+
+def plugin_add(interactive=True):
+    plugins = plugin_load()
+    print("Add a custom plugin/tool (usable by you AND the AI).")
+    print("Types: command (local CLI tool), url (HTTP endpoint), python (inline script).\n")
+    name = prompt("Plugin name (unique, e.g. mytool)")
+    if not name:
+        print("Cancelled.")
+        return
+    ptype = prompt("Type (command/url/python)", "command").strip().lower()
+    if ptype not in ("command", "url", "python"):
+        print("Invalid type. Use command, url, or python.")
+        return
+    desc = prompt("Description (what it does / when to use)")
+    if ptype == "command":
+        cmdline = prompt("Command (e.g. /path/tool --flag {arg}) - use {arg} as input placeholder")
+        if not cmdline:
+            print("Cancelled.")
+            return
+        plugin = {"name": name, "type": ptype, "command": cmdline,
+                  "description": desc, "timeout": 120}
+    elif ptype == "url":
+        url = prompt("URL (use {arg} as placeholder, e.g. https://api.x.com/?q={arg})")
+        method = prompt("Method (GET/POST)", "GET").upper()
+        headers = prompt("Extra headers (JSON, optional)")
+        hdr = {}
+        try:
+            hdr = json.loads(headers) if headers else {}
+        except Exception:
+            print("Invalid JSON headers - ignoring.")
+        plugin = {"name": name, "type": ptype, "url": url, "method": method,
+                  "headers": hdr, "description": desc}
+    else:
+        script = prompt("Python code (function run(arg) -> str)")
+        if not script:
+            print("Cancelled.")
+            return
+        plugin = {"name": name, "type": ptype, "code": script, "description": desc}
+
+    auth = prompt("Auth info (optional, e.g. 'Bearer TOKEN' or 'key=VALUE')")
+    if auth:
+        plugin["auth"] = auth
+    plugins.append(plugin)
+    plugin_save(plugins)
+    print("\nPlugin '%s' added. Available to you and the AI." % name)
+
+
+def plugin_list():
+    plugins = plugin_load()
+    if not plugins:
+        print("No plugins configured.")
+        return
+    print("Configured plugins (%d):" % len(plugins))
+    for p in plugins:
+        print("  - %s (%s): %s" % (p.get("name"), p.get("type"), p.get("description") or ""))
+
+
+def plugin_remove(name, interactive=True):
+    plugins = plugin_load()
+    before = len(plugins)
+    plugins = [p for p in plugins if p.get("name", "").lower() != name.lower()]
+    if len(plugins) == before:
+        print("Plugin '%s' not found." % name)
+        return
+    plugin_save(plugins)
+    print("Removed plugin '%s'." % name)
+
+
+def plugin_run(p, arg=""):
+    """Run a plugin and return its text output."""
+    try:
+        if p["type"] == "command":
+            cmd = p.get("command", "").replace("{arg}", arg or "")
+            return run_tool_capture(shlex.split(cmd), timeout=p.get("timeout", 120))
+        elif p["type"] == "url":
+            url = p.get("url", "").replace("{arg}", urllib.parse.quote(arg or "") if arg else "")
+            headers = {"User-Agent": OSINT_UA, "Content-Type": "application/json"}
+            headers.update(p.get("headers") or {})
+            if p.get("auth"):
+                if p["auth"].startswith("Bearer"):
+                    headers["Authorization"] = p["auth"]
+                elif "=" in p["auth"]:
+                    k, _, v = p["auth"].partition("=")
+                    headers[k.strip()] = v.strip()
+            method = p.get("method", "GET")
+            req = urllib.request.Request(url, headers=headers, method=method)
+            with urllib.request.urlopen(req, timeout=p.get("timeout", 120)) as r:
+                return r.read().decode("utf-8", "replace")[:8000]
+        elif p["type"] == "python":
+            code = p.get("code", "")
+            ns = {"arg": arg}
+            try:
+                exec(code, ns)
+                if callable(ns.get("run")):
+                    return str(ns["run"](arg))[:8000]
+                return "(python plugin has no run(arg))"
+            except Exception as e:
+                return "python plugin error: %s" % e
+    except Exception as e:
+        return "plugin error: %s" % e
+    return "(no output)"
+
+
+def plugin_exec(name, arg="", verbose=True):
+    plugins = plugin_load()
+    p = next((x for x in plugins if x.get("name", "").lower() == name.lower()), None)
+    if not p:
+        if verbose:
+            print("Plugin '%s' not found." % name)
+        return None
+    out = plugin_run(p, arg)
+    if verbose:
+        print("Plugin %s output:\n%s" % (name, out[:2000]))
+    return out
+
+
+def ai_plugin_descriptions():
+    plugins = plugin_load()
+    if not plugins:
+        return ""
+    lines = ["Custom plugins available (call with PLUGIN: <name> arg):"]
+    for p in plugins:
+        lines.append("  - %s (%s): %s" % (p.get("name"), p.get("type"),
+                                          p.get("description") or "custom tool"))
+    return "\n".join(lines)
+
+
+def cmd_plugin(args, interactive=True):
+    if not args:
+        print("Usage: profiler plugin [add|list|remove|run]")
+        plugin_list()
+        return
+    sub = args[0].lower()
+    if sub in ("add", "new", "create"):
+        plugin_add(interactive)
+    elif sub in ("list", "ls", "show"):
+        plugin_list()
+    elif sub in ("remove", "rm", "del", "delete"):
+        if len(args) < 2:
+            print("Usage: profiler plugin remove <name>")
+            return
+        plugin_remove(args[1], interactive)
+    elif sub in ("run", "exec", "call"):
+        if len(args) < 2:
+            print("Usage: profiler plugin run <name> [arg]")
+            return
+        plugin_exec(args[1], " ".join(args[2:]))
+    elif sub in ("help", "-h"):
+        print("profiler plugin [add|list|remove <name>|run <name> <arg>]")
+    else:
+        plugin_exec(args[0], " ".join(args[1:]))
 
 
 def run_tool_capture(cmd, timeout=120):
@@ -3035,6 +3463,9 @@ def print_commands():
     print("  osint-log                              OSINT change log")
     print("  dedup / find-dupes                     detect duplicate profiles")
     print("  expand <name>                          identify + build related network (company/persons/subs)")
+    print("  network <domain>                       scan website: DNS, TLS, ports, subdomains, IP")
+    print("  network --wifi | --bluetooth           scan wifi/bluetooth networks (Termux)")
+    print("  plugin [add|list|remove|run]           custom plugin system (usable by AI)")
     print("  merge <a> <b>                          merge two profiles")
     print("  import-contacts                        import phone contacts (termux-api)")
     print("  photo <name> [--file P | --camera]      add photo  |  <name> 1,3 = view")
@@ -3180,6 +3611,12 @@ def run_one(cmd, ctx=None, interactive=True):
             print("Usage: expand <name or word>")
             return "menu"
         cmd_expand(" ".join(rest), interactive)
+        return "menu"
+    if w0 in ("network", "scan"):
+        cmd_network(rest, interactive)
+        return "menu"
+    if w0 in ("plugin", "plugins"):
+        cmd_plugin(rest, interactive)
         return "menu"
     if w0 == "merge":
         if len(rest) < 2:
@@ -3956,6 +4393,10 @@ def print_cli_usage():
     print("  osint-log                    view OSINT change log")
     print("  dedup / find-dupes           detect duplicate profiles")
     print("  expand <name>                 identify + create related people/companies/subs")
+    print("  network <domain>               scan website: DNS, TLS, ports, subdomains, IP")
+    print("  network --wifi                 scan wifi networks (Termux)")
+    print("  network --bluetooth            scan bluetooth devices (Termux)")
+    print("  plugin [add|list|remove|run]   custom plugin system (usable by AI)")
     print("  merge <a> <b>                merge two profiles")
     print("  stats")
     print("  encrypt on|off")
@@ -4130,6 +4571,12 @@ def dispatch_cli(args):
             print("Usage: profiler expand <name or word>")
             return
         cmd_expand(" ".join(rest), interactive)
+        return
+    if cmd in ("network", "scan"):
+        cmd_network(rest, interactive)
+        return
+    if cmd in ("plugin", "plugins", "plugins-tool"):
+        cmd_plugin(rest, interactive)
         return
     if cmd == "merge":
         if len(rest) < 2:

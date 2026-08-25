@@ -18,6 +18,8 @@
 - **Reverse Image Search** — Bing-powered image search from the CLI
 - **Phone Contacts Import** — Import from termux-contact-list (Android)
 - **Recurring OSINT** — Schedule daily/weekly/monthly OSINT runs with change log
+- **Network Scanning** — Profile websites (DNS, TLS, ports, subdomains, IP) and scan WiFi/Bluetooth networks
+- **Custom Plugin System** — Add your own tools (command/URL/Python), usable by you AND the AI
 - **Custom AI Provider** — Bring your own OpenAI-compatible API key (OpenAI, Groq, OpenRouter, DeepSeek, local, etc.)
 
 ## Quick Install
@@ -33,31 +35,32 @@ chmod +x /usr/bin/profiler
 
 ```bash
 profiler                    # interactive menu
-profiler add "John Doe" --phone X --email Y
+profiler add "Alice" --phone X --email Y
 profiler list
-profiler osint "John Doe"   # auto OSINT enrichment
-profiler expand "Ispahani"  # build entity network
+profiler osint "Alice"      # auto OSINT enrichment
+profiler expand "TechCorp"  # build entity network
+profiler network "example.com"  # scan a website
 profiler graph              # relationship graph
-profiler case "John Doe"    # chronological dossier
-profiler report "John Doe"  # HTML report
+profiler case "Alice"       # chronological dossier
+profiler report "Alice"     # HTML report
 ```
 
 ## OSINT Example
 
 ```
-> profiler osint "Cristiano Ronaldo"
-  → Wikipedia: Cristiano Ronaldo (born 5 Feb 1985), Portuguese footballer
-  → Google News: 10+ live headlines
-  → Web presence: documentary, airport named after him, etc.
+> profiler osint "Some Person"
+  → Wikipedia: biography summary
+  → Google News: live headlines
+  → Web presence: related pages
   → All auto-appended to profile timeline
 ```
 
 ## Entity Expansion Example
 
 ```
-> profiler expand "Ispahani"
-  → Identified as: Bangladeshi conglomerate
-  → Created 11 profiles: main company + 4 persons + 4 subsidiaries + 2 related
+> profiler expand "TechCorp"
+  → Identified as: technology company
+  → Created profiles: main company + key people + subsidiaries + related
   → All linked in the relationship graph
   → OSINT auto-enriched on each
 ```
@@ -73,6 +76,45 @@ profiler ai ask "research this person and add to their profile"
 ```
 
 Works with any OpenAI-compatible API: OpenAI, Groq, OpenRouter, DeepSeek, Together, LM Studio, local servers, etc.
+
+## Network Scanning
+
+Profile a website or scan nearby networks:
+
+```bash
+profiler network "example.com"    # DNS, TLS cert, open ports, IP geolocation, subdomains
+profiler network --wifi           # scan WiFi networks (Termux)
+profiler network --bluetooth      # scan Bluetooth devices (Termux)
+```
+
+Website scans auto-save as a profile when you confirm. WiFi/Bluetooth scans
+need the Termux API on Android; on PC/Linux use external tools.
+
+## Custom Plugins (AI-usable)
+
+Add your own tools — command-line tools, HTTP endpoints, or inline Python:
+
+```bash
+profiler plugin add       # interactive setup
+profiler plugin list
+profiler plugin run <name> <arg>
+profiler plugin remove <name>
+```
+
+Plugins are exposed to the AI, which can call them automatically:
+
+```
+> profiler ai ask "use mytool on this input"
+PLUGIN> mytool some input
+AI> <result>
+```
+
+Plugin types:
+- `command` — local CLI tool (e.g. `/path/tool --flag {arg}`)
+- `url` — HTTP endpoint (GET/POST, custom headers/auth)
+- `python` — inline `def run(arg) -> str` script
+
+
 
 ## Requirements
 
